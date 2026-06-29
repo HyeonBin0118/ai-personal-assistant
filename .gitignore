@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# 환경변수
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# DB
+*.db
+*.sqlite3
+
+# Alembic
+# (마이그레이션 파일은 보통 추적함, ini는 비밀값 없으면 추적해도 됨)
+
+# 로그
+*.log
+
+# 부하 테스트 결과 (raw 데이터는 용량 클 수 있어서 .gitkeep만 추적)
+loadtest/results/baseline/*
+loadtest/results/optimized/*
+!loadtest/results/baseline/.gitkeep
+!loadtest/results/optimized/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
