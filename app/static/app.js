@@ -282,6 +282,40 @@ function initMainPage() {
     return div.innerHTML;
   }
 
+  // ---------- 알림 폴링 ----------
+
+  async function pollNotifications() {
+    try {
+      const res = await fetch(`${API_BASE}/notifications?unread_only=true`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) return;
+
+      const notifications = await res.json();
+      if (notifications.length > 0) {
+        const latest = notifications[0];
+        showNotification(latest.message);
+        markAsRead(latest.id);
+      }
+    } catch (err) {
+      // 폴링 실패는 조용히 무시 (다음 주기에 재시도)
+    }
+  }
+
+  async function markAsRead(notificationId) {
+    try {
+      await fetch(`${API_BASE}/notifications/${notificationId}/read`, {
+        method: "PATCH",
+        headers: authHeaders(),
+      });
+    } catch (err) {
+      // 무시
+    }
+  }
+
+  setInterval(pollNotifications, 15000); // 15초마다 폴링
+  pollNotifications();
+
   // 초기 로딩
   loadList(currentTab);
 }

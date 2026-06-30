@@ -29,11 +29,15 @@ def create_input(
             user_id=current_user.id,
             title=result.title,
             start_at=result.start_at,
+            notify_at=result.notify_at,
         )
         db.add(record)
         db.commit()
         db.refresh(record)
-        return InputResponse(category="schedule", saved_id=record.id, message=f"일정 등록: {record.title}")
+        msg = f"일정 등록: {record.title}"
+        if record.notify_at:
+            msg += f" ({record.notify_at.strftime('%m월 %d일 %H:%M')}에 알림)"
+        return InputResponse(category="schedule", saved_id=record.id, message=msg)
 
     elif result.category == "expense":
         if result.amount is None or not result.item:

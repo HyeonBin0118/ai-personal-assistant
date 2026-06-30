@@ -12,6 +12,7 @@ class ClassificationResult(BaseModel):
     category: Literal["schedule", "expense", "todo"]
     title: Optional[str] = None
     start_at: Optional[datetime] = None
+    notify_at: Optional[datetime] = None
     amount: Optional[float] = None
     item: Optional[str] = None
     content: Optional[str] = None
