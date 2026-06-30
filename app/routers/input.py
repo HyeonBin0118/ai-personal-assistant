@@ -3,28 +3,30 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db
+from app.core.deps import get_db, get_current_user
 from app.schemas.input import InputRequest, InputResponse
 from app.services.llm_classifier import classify
 from app.models.schedule import Schedule
 from app.models.expense import Expense
 from app.models.todo import Todo
+from app.models.user import User
 
 router = APIRouter(prefix="/input", tags=["input"])
 
-# Phase 2에서 JWT 인증 붙기 전까지 임시 고정 사용자 사용
-TEMP_USER_ID = 1
-
 
 @router.post("", response_model=InputResponse)
-def create_input(payload: InputRequest, db: Session = Depends(get_db)):
+def create_input(
+    payload: InputRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = classify(payload.text)
 
     if result.category == "schedule":
         if not result.title or not result.start_at:
             raise HTTPException(status_code=422, detail="일정 분류 결과에 제목 또는 시각이 없음")
         record = Schedule(
-            user_id=TEMP_USER_ID,
+            user_id=current_user.id,
             title=result.title,
             start_at=result.start_at,
         )
@@ -37,7 +39,7 @@ def create_input(payload: InputRequest, db: Session = Depends(get_db)):
         if result.amount is None or not result.item:
             raise HTTPException(status_code=422, detail="지출 분류 결과에 금액 또는 항목이 없음")
         record = Expense(
-            user_id=TEMP_USER_ID,
+            user_id=current_user.id,
             item=result.item,
             amount=result.amount,
             occurred_at=datetime.now(),
@@ -51,7 +53,7 @@ def create_input(payload: InputRequest, db: Session = Depends(get_db)):
         if not result.content:
             raise HTTPException(status_code=422, detail="투두 분류 결과에 내용이 없음")
         record = Todo(
-            user_id=TEMP_USER_ID,
+            user_id=current_user.id,
             content=result.content,
         )
         db.add(record)
