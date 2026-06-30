@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from app.database import Base, engine, SessionLocal
+from app.database import SessionLocal
 from app.models.user import User
 from app.routers import input as input_router
 from app.routers import schedules, expenses, todos
@@ -25,10 +25,8 @@ def _ensure_temp_user():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
     _ensure_temp_user()
     yield
-
 
 app = FastAPI(title="AI Personal Assistant", lifespan=lifespan)
 
