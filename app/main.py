@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.routers import input as input_router
 from app.routers import schedules, expenses, todos, auth
+from fastapi.responses import RedirectResponse
 
 
 @asynccontextmanager
@@ -21,3 +22,7 @@ app.include_router(expenses.router)
 app.include_router(todos.router)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+@app.get("/")
+def root():
+    return RedirectResponse(url="/static/login.html")

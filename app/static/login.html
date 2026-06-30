@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 비서 - 로그인</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<div class="auth-wrapper">
+  <div class="auth-box card">
+    <h1 id="formTitle">로그인</h1>
+    <p class="subtitle" id="formSubtitle">일상을 말하면 비서가 정리해드려요</p>
+
+    <form id="authForm">
+      <div class="field">
+        <label for="email">이메일</label>
+        <input type="email" id="email" required autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="password">비밀번호</label>
+        <input type="password" id="password" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn" id="submitBtn">로그인</button>
+      <button type="button" class="btn btn-secondary" id="toggleModeBtn">계정이 없으신가요? 회원가입</button>
+      <p class="error-msg" id="errorMsg"></p>
+    </form>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+  initLoginPage();
+</script>
+</body>
+</html>

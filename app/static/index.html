@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 비서</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <h1>AI 비서</h1>
+  <button class="logout-btn" id="logoutBtn">로그아웃</button>
+</header>
+
+<div class="app-container">
+
+  <div class="input-area">
+    <input type="text" id="inputText" placeholder="예: 내일 3시에 치과 예약, 커피 4500원" autocomplete="off" />
+    <button id="sendBtn">등록</button>
+  </div>
+
+  <div class="notification-banner" id="notificationBanner"></div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="schedules">일정</button>
+    <button class="tab-btn" data-tab="expenses">지출</button>
+    <button class="tab-btn" data-tab="todos">투두</button>
+  </div>
+
+  <div class="item-list" id="itemList">
+    <p class="empty-msg">불러오는 중...</p>
+  </div>
+
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+  initMainPage();
+</script>
+</body>
+</html>
