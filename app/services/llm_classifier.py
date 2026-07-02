@@ -1,6 +1,5 @@
 import json
 import random
-import hashlib
 from datetime import datetime, timedelta
 
 from openai import OpenAI
@@ -9,8 +8,6 @@ from app.config import settings
 from app.schemas.input import ClassificationResult
 
 client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
-
-CACHE_TTL = 60 * 60 * 24  # 24시간
 
 SYSTEM_PROMPT = """너는 사용자의 일상 문장을 분석해서 일정, 지출, 투두 중 하나로 분류하는 비서야.
 현재 시각은 {now} 이고, 문장에 상대적인 날짜 표현(내일, 다음 주 화요일 등)이 있으면 이 시각을 기준으로 절대 시각으로 변환해.
@@ -30,12 +27,6 @@ SYSTEM_PROMPT = """너는 사용자의 일상 문장을 분석해서 일정, 지
   "content": "투두일 경우 할 일 내용, 아니면 null"
 }}
 """
-
-
-def _make_cache_key(text: str) -> str:
-    """입력 문장을 정규화 후 SHA256 해시로 캐시 키 생성."""
-    normalized = text.strip().lower()
-    return "llm_cache:" + hashlib.sha256(normalized.encode()).hexdigest()
 
 
 def _mock_classify(text: str) -> ClassificationResult:
@@ -66,20 +57,6 @@ def classify(text: str) -> ClassificationResult:
     if settings.mock_llm or client is None:
         return _mock_classify(text)
 
-    # 캐시 조회
-    from app.core.redis_client import redis_client
-    cache_key = _make_cache_key(text)
-
-    try:
-        cached = redis_client.get(cache_key)
-        if cached:
-            parsed = json.loads(cached)
-            parsed["_cache_hit"] = True
-            return ClassificationResult(**{k: v for k, v in parsed.items() if k != "_cache_hit"})
-    except Exception:
-        pass  # Redis 장애 시 캐시 없이 진행
-
-    # LLM 호출
     now = datetime.now().isoformat()
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -92,11 +69,5 @@ def classify(text: str) -> ClassificationResult:
 
     raw = response.choices[0].message.content
     parsed = json.loads(raw)
-
-    # 결과를 Redis에 저장
-    try:
-        redis_client.setex(cache_key, CACHE_TTL, json.dumps(parsed))
-    except Exception:
-        pass  # Redis 장애 시 무시
 
     return ClassificationResult(**parsed)

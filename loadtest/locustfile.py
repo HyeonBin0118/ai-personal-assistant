@@ -1,26 +1,14 @@
 import random
-from locust import HttpUser, task, between, events
-from locust.runners import MasterRunner
+from locust import HttpUser, task, between
+from input_generator import generate_random_input
 
 # 테스트용 계정 정보
 NUM_USERS = 50
 BASE_EMAIL = "loadtest_user_{}@test.com"
 PASSWORD = "loadtest1234"
 
-# 테스트 입력 문장 (랜덤으로 하나씩 사용)
-TEST_INPUTS = [
-    "내일 3시에 치과 예약",
-    "오늘 점심 8500원",
-    "주간 보고서 작성하기",
-    "다음주 월요일 팀 미팅",
-    "어제 커피 4500원",
-    "헬스장 가기",
-    "친구 생일 선물 사기",
-    "이번 달 교통비 50000원",
-    "독서 30분 하기",
-    "오늘 저녁 장보기 15000원",
-]
-
+#### 부하 테스트 시나리오(500개 질의)
+from input_generator import generate_random_input
 
 class AssistantUser(HttpUser):
     wait_time = between(1, 3)  # 요청 사이 1~3초 대기
@@ -54,7 +42,7 @@ class AssistantUser(HttpUser):
             self._login()
             return
 
-        text = random.choice(TEST_INPUTS)
+        text = generate_random_input()
         res = self.client.post(
             "/input",
             json={"text": text},
