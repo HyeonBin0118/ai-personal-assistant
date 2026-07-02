@@ -1,5 +1,6 @@
 import json
 import random
+import hashlib
 from datetime import datetime, timedelta
 
 from openai import OpenAI
@@ -8,6 +9,8 @@ from app.config import settings
 from app.schemas.input import ClassificationResult
 
 client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+
+CACHE_TTL = 60 * 60 * 24  # 24시간
 
 SYSTEM_PROMPT = """너는 사용자의 일상 문장을 분석해서 일정, 지출, 투두 중 하나로 분류하는 비서야.
 현재 시각은 {now} 이고, 문장에 상대적인 날짜 표현(내일, 다음 주 화요일 등)이 있으면 이 시각을 기준으로 절대 시각으로 변환해.
@@ -29,8 +32,12 @@ SYSTEM_PROMPT = """너는 사용자의 일상 문장을 분석해서 일정, 지
 """
 
 
+def _make_cache_key(text: str) -> str:
+    normalized = text.strip().lower()
+    return "llm_cache:" + hashlib.sha256(normalized.encode()).hexdigest()
+
+
 def _mock_classify(text: str) -> ClassificationResult:
-    """부하 테스트용 모킹."""
     category = random.choice(["schedule", "expense", "todo"])
     if category == "schedule":
         start = datetime.now() + timedelta(days=1)
@@ -57,6 +64,16 @@ def classify(text: str) -> ClassificationResult:
     if settings.mock_llm or client is None:
         return _mock_classify(text)
 
+    from app.core.redis_client import redis_client
+    cache_key = _make_cache_key(text)
+
+    try:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return ClassificationResult(**json.loads(cached))
+    except Exception:
+        pass
+
     now = datetime.now().isoformat()
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -69,5 +86,10 @@ def classify(text: str) -> ClassificationResult:
 
     raw = response.choices[0].message.content
     parsed = json.loads(raw)
+
+    try:
+        redis_client.setex(cache_key, CACHE_TTL, json.dumps(parsed))
+    except Exception:
+        pass
 
     return ClassificationResult(**parsed)
