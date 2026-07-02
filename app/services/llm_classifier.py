@@ -12,24 +12,22 @@ client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else
 
 CACHE_TTL = 60 * 60 * 24  # 24시간
 
-SYSTEM_PROMPT = """너는 사용자의 일상 문장을 분석해서 일정, 지출, 투두 중 하나로 분류하는 비서야.
-현재 시각은 {now} 이고, 문장에 상대적인 날짜 표현(내일, 다음 주 화요일 등)이 있으면 이 시각을 기준으로 절대 시각으로 변환해.
-
-일정(schedule)인 경우, 문장에 "N분 전에 알려줘", "1시간 전에 알림" 같은 알림 요청이 있으면 start_at에서 해당 시간만큼 뺀 시각을 notify_at으로 계산해.
-알림 요청이 명시되어 있지 않으면 notify_at은 null로 둬.
-
-반드시 아래 JSON 형식으로만 응답해. 다른 설명은 절대 붙이지 마.
-
-{{
-  "category": "schedule" | "expense" | "todo",
-  "title": "일정일 경우 제목, 아니면 null",
-  "start_at": "일정일 경우 ISO 8601 형식 시각, 아니면 null",
-  "notify_at": "일정이고 알림 요청이 있으면 ISO 8601 형식 시각, 아니면 null",
-  "amount": "지출일 경우 금액(숫자), 아니면 null",
-  "item": "지출일 경우 항목명, 아니면 null",
-  "content": "투두일 경우 할 일 내용, 아니면 null"
-}}
-"""
+SYSTEM_PROMPT = (
+    "You are an assistant that classifies Korean daily life sentences into one of three categories: "
+    "schedule, expense, or todo. "
+    "Current time is {now}. "
+    "For relative date expressions (tomorrow, next Monday, etc.), convert them to absolute datetime based on current time. "
+    "For schedule, if the sentence contains a notification request like '30 minutes before' or '1 hour before', "
+    "calculate notify_at by subtracting that time from start_at. If no notification is requested, set notify_at to null. "
+    "Respond ONLY in the following JSON format with no additional text:\n"
+    '{{"category": "schedule" | "expense" | "todo", '
+    '"title": "schedule title or null", '
+    '"start_at": "ISO 8601 datetime or null", '
+    '"notify_at": "ISO 8601 datetime or null", '
+    '"amount": "expense amount as number or null", '
+    '"item": "expense item name or null", '
+    '"content": "todo content or null"}}'
+)
 
 
 def _make_cache_key(text: str) -> str:
