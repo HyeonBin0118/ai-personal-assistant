@@ -23,12 +23,6 @@ env/
 # 로그
 *.log
 
-# 부하 테스트 결과 (raw 데이터는 용량 클 수 있어서 .gitkeep만 추적)
-loadtest/results/baseline/*
-loadtest/results/optimized/*
-!loadtest/results/baseline/.gitkeep
-!loadtest/results/optimized/.gitkeep
-
 # OS
 .DS_Store
 Thumbs.db
