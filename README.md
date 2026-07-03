@@ -66,7 +66,7 @@ PostgreSQL (pgvector 확장)
 | 3 | 스케줄러 + 알림 | ✅ 완료 |
 | 4 | Baseline 부하 테스트 | ✅ 완료 |
 | 5 | 캐싱 전략 적용 및 측정 | ✅ 완료 |
-| 6 | 비교 그래프 및 최종 정리 | 🔄 진행 중 |
+| 6 | 비교 그래프 및 최종 정리 | ✅ 완료 |
 
 세부 계획은 [PLAN.md](./PLAN.md) 참고.
 
@@ -89,8 +89,7 @@ PostgreSQL (pgvector 확장)
 
 ### 비교 그래프
 
-<!-- TODO: Phase 6에서 matplotlib 비교 그래프 이미지 추가 예정 -->
-<!-- 버전별 /input p50/p95 비교 (꺾은선), 캐시 히트율 비교 (막대), RPS 비교 -->
+![Caching Strategy Comparison](loadtest/results/comparison.png)
 
 ### 캐싱 전략 개선 과정
 
@@ -102,6 +101,15 @@ PostgreSQL (pgvector 확장)
 
 **Step 3 — 임베딩 유사도 캐싱 pgvector (인덱스 검색)**
 PostgreSQL `pgvector` 확장 도입. 임베딩 벡터를 DB에 저장하고 HNSW 인덱스 기반 코사인 거리 검색(O(log N))으로 교체. 히트율 18.2%로 exact_cache 대비 개선되었으며 응답시간도 no_cache 수준으로 안정화됐다.
+
+### 한계 및 개선 여지
+
+5분 부하 테스트는 캐시가 거의 비어있는 콜드 스타트 상태를 측정한 것이다. 임베딩 캐싱은 캐시가 충분히 쌓일수록 효과가 커지는 구조라, 실제 서비스에서 하루 이상 운영하면 자주 입력되는 표현들이 누적되어 히트율이 40~60% 수준까지 올라갈 것으로 예상된다. 그 시점에서는 응답시간 개선 효과도 더 뚜렷하게 나타난다.
+
+추가 개선 방향:
+- **비동기 처리 (Celery)** — LLM 호출을 백그라운드로 분리해 사용자 체감 응답시간 단축
+- **Rate Limiting** — OpenAI API 보호 및 서버 안정성 확보
+- **DB 인덱스 최적화** — 조회 API p95 개선 (user_id + created_at 복합 인덱스)
 
 ---
 
