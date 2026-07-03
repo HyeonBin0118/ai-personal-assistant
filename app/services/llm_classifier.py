@@ -1,6 +1,7 @@
 import json
 import random
 import hashlib
+import numpy as np
 from datetime import datetime, timedelta
 
 from openai import OpenAI
@@ -10,7 +11,8 @@ from app.schemas.input import ClassificationResult
 
 client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
 
-CACHE_TTL = 60 * 60 * 24  # 24시간
+CACHE_TTL = 60 * 60 * 24
+SIMILARITY_THRESHOLD = 0.95
 
 SYSTEM_PROMPT = (
     "You are an assistant that classifies Korean daily life sentences into one of three categories: "
@@ -30,9 +32,41 @@ SYSTEM_PROMPT = (
 )
 
 
-def _make_cache_key(text: str) -> str:
-    normalized = text.strip().lower()
-    return "llm_cache:" + hashlib.sha256(normalized.encode()).hexdigest()
+def _get_embedding(text: str) -> list[float]:
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text,
+    )
+    return response.data[0].embedding
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    a = np.array(a)
+    b = np.array(b)
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
+def _find_similar_cache(redis_client, embedding: list[float]) -> dict | None:
+    keys = redis_client.keys("llm_embed:*")
+    best_score = 0.0
+    best_result = None
+
+    for key in keys:
+        cached = redis_client.get(key)
+        if not cached:
+            continue
+        try:
+            data = json.loads(cached)
+            score = _cosine_similarity(embedding, data["embedding"])
+            if score > best_score:
+                best_score = score
+                best_result = data["result"]
+        except Exception:
+            continue
+
+    if best_score >= SIMILARITY_THRESHOLD:
+        return best_result
+    return None
 
 
 def _mock_classify(text: str) -> ClassificationResult:
@@ -63,31 +97,44 @@ def classify(text: str) -> ClassificationResult:
         return _mock_classify(text)
 
     from app.core.redis_client import redis_client
-    cache_key = _make_cache_key(text)
 
     try:
-        cached = redis_client.get(cache_key)
-        if cached:
-            return ClassificationResult(**json.loads(cached))
+        embedding = _get_embedding(text)
+        cached_result = _find_similar_cache(redis_client, embedding)
+        if cached_result:
+            return ClassificationResult(**cached_result)
+
+        now = datetime.now().isoformat()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT.format(now=now)},
+                {"role": "user", "content": text},
+            ],
+        )
+        raw = response.choices[0].message.content
+        parsed = json.loads(raw)
+
+        cache_key = "llm_embed:" + hashlib.sha256(text.encode()).hexdigest()
+        redis_client.setex(
+            cache_key,
+            CACHE_TTL,
+            json.dumps({"embedding": embedding, "result": parsed}),
+        )
+
+        return ClassificationResult(**parsed)
+
     except Exception:
-        pass
-
-    now = datetime.now().isoformat()
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT.format(now=now)},
-            {"role": "user", "content": text},
-        ],
-    )
-
-    raw = response.choices[0].message.content
-    parsed = json.loads(raw)
-
-    try:
-        redis_client.setex(cache_key, CACHE_TTL, json.dumps(parsed))
-    except Exception:
-        pass
-
-    return ClassificationResult(**parsed)
+        now = datetime.now().isoformat()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT.format(now=now)},
+                {"role": "user", "content": text},
+            ],
+        )
+        raw = response.choices[0].message.content
+        parsed = json.loads(raw)
+        return ClassificationResult(**parsed)
