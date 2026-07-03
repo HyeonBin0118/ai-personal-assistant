@@ -7,11 +7,7 @@
 백엔드 측면에서 다음 두 가지를 학습하고 검증하기 위한 프로젝트.
 
 1. **다중 사용자 동시성 처리** — 여러 사용자가 동시에 같은 API를 사용할 때 발생하는 DB 커넥션 풀, 트랜잭션 충돌, 락 경합 같은 백엔드 고유의 문제를 직접 경험하고 해결한다.
-2. **부하 테스트 기반 성능 개선** — 최적화 없이 만든 baseline 서버에 부하를 걸어 병목을 측정하고, 캐싱·비동기 처리 등으로 개선한 뒤 재측정해 정량적인 비교 결과를 남긴다.
-
-부하 테스트는 두 가지 모드로 진행한다.
-- **Mock 모드** (`MOCK_LLM=true`): LLM 호출을 스텁으로 대체해 DB·동시성 로직만 순수하게 측정
-- **실제 LLM 모드** (`MOCK_LLM=false`): OpenAI GPT-4o-mini 실호출까지 포함해 프로덕션 유사 환경 측정
+2. **부하 테스트 기반 성능 개선** — 최적화 없이 만든 baseline 서버에 부하를 걸어 병목을 측정하고, 캐싱 전략으로 개선한 뒤 재측정해 정량적인 비교 결과를 남긴다.
 
 ## 주요 기능
 
@@ -28,10 +24,11 @@
 | 구분 | 사용 도구 |
 |---|---|
 | 백엔드 | FastAPI, SQLAlchemy, Alembic |
-| 데이터베이스 | PostgreSQL |
+| 데이터베이스 | PostgreSQL + pgvector |
 | 캐싱 | Redis |
 | 스케줄러 | APScheduler |
 | LLM | GPT-4o-mini (JSON 모드 분류) |
+| 임베딩 | text-embedding-3-small |
 | 인증 | JWT (python-jose) + bcrypt |
 | 프런트엔드 | HTML / Vanilla JS |
 | 부하 테스트 | Locust |
@@ -44,12 +41,15 @@
     │
     ▼
 FastAPI 서버
-    ├─ 입력 처리 API  (자연어 → Redis 캐시 확인 → LLM 분류 → DB 저장)
-    └─ 조회 API      (알림 및 목록 조회)
+    ├─ 입력 처리 API
+    │   자연어 → 임베딩 생성 → pgvector 유사도 검색
+    │   → 캐시 히트: 즉시 반환 / 캐시 미스: LLM 분류 → DB 저장
+    └─ 조회 API (알림 및 목록 조회)
     │
     ▼
-PostgreSQL DB
-    │ (계정별 일정 · 지출 · 투두 · 알림)
+PostgreSQL (pgvector 확장)
+    ├─ 계정별 일정 · 지출 · 투두 · 알림
+    └─ embedding_cache (임베딩 벡터 + 분류 결과)
     ▲
     │
 백그라운드 스케줄러 (APScheduler)
@@ -65,55 +65,45 @@ PostgreSQL DB
 | 2 | JWT 인증 + 웹 UI | ✅ 완료 |
 | 3 | 스케줄러 + 알림 | ✅ 완료 |
 | 4 | Baseline 부하 테스트 | ✅ 완료 |
-| 5 | 분석 및 개선 | 🔄 진행 중 |
-| 6 | 재측정 및 비교 | 예정 |
+| 5 | 캐싱 전략 적용 및 측정 | ✅ 완료 |
+| 6 | 비교 그래프 및 최종 정리 | 🔄 진행 중 |
 
-세부 계획은 [PLAN.md](./PLAN.md), 부하 테스트 결과는 [loadtest/results/](./loadtest/results/) 참고.
+세부 계획은 [PLAN.md](./PLAN.md) 참고.
 
-## 부하 테스트 결과 요약
+---
+
+## 부하 테스트 결과
 
 ### 테스트 설계
 
-초기에는 10개 고정 문장으로 테스트했으나, 완전 일치 캐싱 테스트 시 캐시 히트율이 비현실적으로 높게 나오는 문제를 발견했다. 이후 실제 사용자 입력 패턴을 반영한 랜덤 문장 생성기(`input_generator.py`)로 테스트 설계를 개선했다.
+초기에는 10개 고정 문장으로 테스트했으나, 캐시 히트율이 비현실적으로 높게 나오는 문제를 발견했다. 이후 실제 사용자 입력 패턴을 반영한 랜덤 문장 생성기(`input_generator.py`)로 테스트 설계를 개선했다. 생성기는 카페·식사·교통 등 생활 밀착형 지출, 업무·병원·약속 일정, 생활·학습 투두를 다양한 표현으로 조합해 매 요청마다 다른 문장을 생성한다.
 
-생성기는 카페·식사·교통·쇼핑 등 생활 밀착형 지출, 업무·병원·약속 등 일정, 생활·업무·학습 등 투두 카테고리를 다양한 표현으로 조합해 매 요청마다 다른 문장을 생성한다.
+### 버전별 측정 결과 (50명 동시 사용자, 5분)
 
-### baseline_fixed (초기 측정 — 10개 고정 문장, 참고용)
+| 버전 | /input p50 | /input p95 | 캐시 히트율 | RPS | 에러율 |
+|---|---|---|---|---|---|
+| no_cache | 1,500ms | 2,800ms | - | 16.9 | 2.2% |
+| exact_cache (Redis) | 1,300ms | 2,100ms | 11.5% | 18.7 | 4.1% |
+| embedding_naive (Redis 전체 스캔) | 4,600ms | 15,000ms | - | 5.0 | 4.5% |
+| **embedding_pgvector** | **1,600ms** | **2,800ms** | **18.2%** | **19.0** | 3.5% |
 
-50 동시 사용자, 실제 LLM 호출 기준:
+### 비교 그래프
 
-| 지표 | 수치 |
-|---|---|
-| /input p50 | 1,300ms |
-| /input p95 | 2,100ms |
-| 조회 API p95 | 280~330ms |
-| 에러율 | 0% |
+<!-- TODO: Phase 6에서 matplotlib 비교 그래프 이미지 추가 예정 -->
+<!-- 버전별 /input p50/p95 비교 (꺾은선), 캐시 히트율 비교 (막대), RPS 비교 -->
 
-### baseline_random (개선된 측정 — 랜덤 생성 문장)
+### 캐싱 전략 개선 과정
 
-50 동시 사용자, 실제 LLM 호출, 캐싱 없음 기준:
+**Step 1 — 완전 일치 캐싱 (Redis exact_cache)**
+입력 문장의 SHA256 해시를 키로 Redis에 저장. 히트율 11.5%로 응답시간 소폭 개선. 단, "커피 4500원"과 "아까 커피 한 잔 4500원"처럼 같은 의미지만 표현이 다른 경우 캐시 미스가 발생해 개선 효과가 제한적이었다.
 
-| 지표 | 수치 |
-|---|---|
-| /input p50 | 1,500ms |
-| /input p95 | 2,800ms |
-| /input p99 | 5,200ms |
-| 조회 API p95 | 580~690ms |
-| RPS | 16.9 |
-| 에러율 | 2.2% |
+**Step 2 — 임베딩 유사도 캐싱 naive (Redis 전체 스캔)**
+입력 문장을 `text-embedding-3-small`로 벡터화 후 Redis에 저장된 모든 벡터와 코사인 유사도 비교. 의미 기반 캐싱이 가능해졌으나 Redis 키 전체를 순차 스캔하는 O(N) 구조로 인해 캐시가 쌓일수록 오히려 LLM 호출보다 느려지는 현상이 발생했다 (p50 4,600ms).
 
-### 확인된 병목
+**Step 3 — 임베딩 유사도 캐싱 pgvector (인덱스 검색)**
+PostgreSQL `pgvector` 확장 도입. 임베딩 벡터를 DB에 저장하고 HNSW 인덱스 기반 코사인 거리 검색(O(log N))으로 교체. 히트율 18.2%로 exact_cache 대비 개선되었으며 응답시간도 no_cache 수준으로 안정화됐다.
 
-1. **LLM 호출 지연** — `/input` p50 1,500ms. 동일하거나 유사한 문장도 매번 LLM API를 새로 호출하는 구조
-2. **완전 일치 캐싱의 한계** — Redis 캐싱 적용 후 히트율 약 10%. 사람마다 표현이 달라 완전 일치 기준으로는 히트율이 낮음
-
-### Phase 5 개선 방향
-
-완전 일치 캐싱의 한계를 확인한 뒤, 의미 기반 유사도 캐싱(임베딩 캐싱)으로 개선을 진행 중이다.
-- 입력 문장을 `text-embedding-3-small`로 벡터화
-- Redis에 저장된 기존 벡터들과 코사인 유사도 비교
-- 임계값(0.95) 이상이면 LLM 재호출 없이 캐시 결과 반환
-- "커피 4500원"과 "아까 커피 한 잔 마셨어 4500원"을 같은 의미로 처리 가능
+---
 
 ## 실행 방법
 
@@ -146,19 +136,12 @@ set DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ai_assistant
 alembic upgrade head
 ```
 
-### 부하 테스트
-
+pgvector 확장 활성화 (최초 1회):
 ```bash
-# 1. 테스트용 계정 생성 (최초 1회)
-cd loadtest
-python create_test_users.py
-
-# 2. Locust 실행
-cd ..
-locust -f loadtest/locustfile.py --host=http://localhost:8000
+docker exec -it ai-personal-assistant-db-1 psql -U postgres -d ai_assistant -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-`http://localhost:8089` 접속 후 사용자 수 / ramp up / run time 설정.
+### 부하 테스트
 
 각 버전 측정 전 초기화 순서:
 ```bash
@@ -167,8 +150,16 @@ docker compose up -d db redis
 alembic upgrade head
 cd loadtest && python create_test_users.py && cd ..
 docker compose up --build -d
+docker exec -it ai-personal-assistant-redis-1 redis-cli flushall
 docker exec -it ai-personal-assistant-redis-1 redis-cli config resetstat
 ```
+
+Locust 실행:
+```bash
+locust -f loadtest/locustfile.py --host=http://localhost:8000
+```
+
+`http://localhost:8089` 접속 후 Users: 50, Ramp up: 2, Run time: 5m 설정.
 
 ## 라이선스
 
