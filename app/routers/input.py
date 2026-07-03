@@ -20,7 +20,7 @@ def create_input(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = classify(payload.text)
+    result = classify(payload.text, db=db)
 
     if result.category == "schedule":
         if not result.title or not result.start_at:
