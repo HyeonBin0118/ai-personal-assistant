@@ -31,7 +31,7 @@ def test_input_unauthorized(client):
 
 def test_input_schedule(client, auth_headers):
     """일정 분류 후 schedules 테이블에 저장."""
-    with patch("app.services.llm_classifier.classify", return_value=MOCK_SCHEDULE):
+    with patch("app.routers.input.classify", return_value=MOCK_SCHEDULE):
         res = client.post("/input", json={"text": "내일 3시 치과"}, headers=auth_headers)
     assert res.status_code == 200
     assert res.json()["category"] == "schedule"

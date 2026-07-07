@@ -20,15 +20,19 @@ def override_get_db():
     finally:
         db.close()
 
-
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
-    import os
-    if os.path.exists("test.db"):
-        os.remove("test.db")
+    engine.dispose()
+    import os, time
+    time.sleep(0.5)
+    try:
+        if os.path.exists("test.db"):
+            os.remove("test.db")
+    except Exception:
+        pass
 
 
 @pytest.fixture
