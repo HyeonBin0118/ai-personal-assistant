@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
 
 from app.database import Base
 
@@ -12,4 +13,5 @@ class Expense(Base):
     item = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     occurred_at = Column(DateTime(timezone=True), nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

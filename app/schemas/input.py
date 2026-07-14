@@ -9,7 +9,7 @@ class InputRequest(BaseModel):
 
 
 class ClassificationResult(BaseModel):
-    category: Literal["schedule", "expense", "todo"]
+    category: Literal["schedule", "expense", "todo",]
     title: Optional[str] = None
     start_at: Optional[datetime] = None
     notify_at: Optional[datetime] = None
