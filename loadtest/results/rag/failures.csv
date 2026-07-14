@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+POST,/input,HTTPError('422 Client Error: Unprocessable Entity for url: /input'),52
+POST,/input,HTTPError('500 Server Error: Internal Server Error for url: /input'),388
