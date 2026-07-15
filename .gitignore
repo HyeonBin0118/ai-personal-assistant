@@ -17,12 +17,15 @@ env/
 *.db
 *.sqlite3
 
-# Alembic
-# (마이그레이션 파일은 보통 추적함, ini는 비밀값 없으면 추적해도 됨)
-
 # 로그
 *.log
 
 # OS
 .DS_Store
 Thumbs.db
+
+# pytest
+.pytest_cache/
+
+# 부하 테스트 결과 HTML (용량 큼)
+loadtest/results/**/*.html
