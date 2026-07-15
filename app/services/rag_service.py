@@ -5,11 +5,13 @@ from app.config import settings
 
 client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
 
-INTENT_PROMPT = """사용자의 입력이 다음 중 어느 것인지 판단해.
-- "save": 일정, 지출, 투두를 저장하려는 입력 (예: "내일 3시 치과", "커피 4500원", "운동하기")
-- "query": 저장된 데이터에 대해 묻는 질문 (예: "이번 달 지출 어때?", "다음 주 일정 뭐 있어?", "오늘 할 일 알려줘")
-
-반드시 "save" 또는 "query" 중 하나만 응답해. 다른 설명은 붙이지 마."""
+# 키워드 기반 의도 분류 (LLM 호출 없이 1ms 안에 판단)
+QUERY_KEYWORDS = [
+    "어때", "얼마", "알려줘", "뭐야", "있어", "정리해줘",
+    "요약해줘", "보여줘", "알고싶어", "궁금해", "뭐 했어",
+    "얼마나", "몇 번", "몇 개", "어디서", "언제", "어떻게",
+    "총", "합계", "평균", "많이", "적게", "자주"
+]
 
 RAG_PROMPT = """너는 사용자의 개인 비서야. 아래 데이터를 바탕으로 사용자의 질문에 친근하게 답변해.
 
@@ -22,28 +24,19 @@ RAG_PROMPT = """너는 사용자의 개인 비서야. 아래 데이터를 바탕
 데이터에 없는 내용은 "해당 데이터가 없어요"라고 말해. 있는 데이터만 바탕으로 답변해."""
 
 
+def classify_intent(text_input: str) -> str:
+    """LLM 호출 없이 키워드 기반으로 의도 분류. O(n) 키워드 매칭으로 1ms 안에 판단."""
+    if any(kw in text_input for kw in QUERY_KEYWORDS):
+        return "query"
+    return "save"
+
+
 def get_embedding(text_input: str) -> list[float]:
     response = client.embeddings.create(
         model="text-embedding-3-small",
         input=text_input,
     )
     return response.data[0].embedding
-
-
-def classify_intent(text_input: str) -> str:
-    """저장 의도인지 질문 의도인지 판단."""
-    if client is None:
-        return "save"
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": INTENT_PROMPT},
-            {"role": "user", "content": text_input},
-        ],
-        max_tokens=10,
-    )
-    result = response.choices[0].message.content.strip().lower()
-    return "query" if "query" in result else "save"
 
 
 def search_relevant_data(db, user_id: int, question: str) -> str:
